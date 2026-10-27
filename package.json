@@ -1,0 +1,23 @@
+{
+  "name": "codex-customizer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test",
+    "start": "node scripts/serve.mjs",
+    "cli": "node bin/codex-customizer.mjs"
+  },
+  "dependencies": {
+    "@iarna/toml": "2.2.5",
+    "exec-policy": "file:../exec-policy",
+    "fflate": "0.8.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  },
+  "bin": {
+    "codex-customizer": "bin/codex-customizer.mjs"
+  }
+}

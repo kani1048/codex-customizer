@@ -1,0 +1,3 @@
+import {createServer} from 'node:http';import {readFile} from 'node:fs/promises';
+const files={'/':'index.html','/style.css':'style.css','/app.js':'app.js','/worker.js':'worker.js','/runtime/hook.mjs':'runtime/hook.mjs','/runtime/worker-node.mjs':'runtime/worker-node.mjs'};
+createServer(async(req,res)=>{const f=files[req.url];if(!f){res.writeHead(404);res.end();return;}try{const bytes=await readFile(new URL('../dist/'+f,import.meta.url));res.writeHead(200,{'Content-Type':f.endsWith('.html')?'text/html; charset=utf-8':f.endsWith('.css')?'text/css':'text/javascript'});res.end(bytes);}catch{res.writeHead(500);res.end('Run npm run build first');}}).listen(8135,'127.0.0.1',()=>console.log('http://127.0.0.1:8135'));

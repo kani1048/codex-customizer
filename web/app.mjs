@@ -1,0 +1,36 @@
+import {zipSync,strToU8} from 'fflate';
+import {defaults,validate,compile} from '../src/assembly.mjs';
+import {rules as policyRules} from 'exec-policy/src/policy.mjs';
+const $=id=>document.getElementById(id);
+let state=structuredClone(defaults),runtime={},output=null,worker,timer;
+try{const s=localStorage.getItem('codex-customizer.v2')||localStorage.getItem('codex-customizer.v1');if(s)state=validate(JSON.parse(s));}catch{$('status').textContent='保存した構成を読み込めないため初期設定を表示します';}
+const fieldIds=['name','setId','model','reasoning','sandbox','approval','instructions','baseConfig'];
+function el(tag,text,cls){const e=document.createElement(tag);if(text)e.textContent=text;if(cls)e.className=cls;return e;}
+function notice(t){$('status').textContent=t;}
+function sync(){for(const id of fieldIds)state[id]=$(id).value;state.policyEnabled=$('policyEnabled').checked;update();}
+function update(){
+ $('assembly-name').textContent=state.name||'名前未設定';$('target').textContent='$CODEX_HOME / Codex 標準形式';$('stats').textContent=state.rules.length+' 個の許可ルール / '+state.hooks.filter(h=>h.enabled).length+' 個のフック';
+ try{output=compile(state,runtime);const selected=$('file-select').value;$('file-select').replaceChildren();for(const name of Object.keys(output.files)){const o=el('option',name);o.value=name;$('file-select').append(o);}if(output.files[selected])$('file-select').value=selected;preview();$('warnings').replaceChildren(...output.warnings.map(w=>el('p',w,'warning')));$('download-zip').disabled=false;}catch(e){output=null;$('download-zip').disabled=true;$('warnings').replaceChildren(el('p',e.message,'warning'));$('file-preview').textContent='有効な構成を入力すると出力を表示します';}
+}
+function preview(){if(output)$('file-preview').textContent=output.files[$('file-select').value]||'';}
+function page(name){for(const p of document.querySelectorAll('[data-panel]'))p.hidden=p.dataset.panel!==name;for(const b of document.querySelectorAll('[data-page]'))b.classList.toggle('selected',b.dataset.page===name);}
+for(const b of document.querySelectorAll('[data-page]'))b.onclick=()=>{sync();page(b.dataset.page);};$('review').onclick=()=>{sync();page('output');};
+function label(text,input){const l=el('label',text);l.append(input);return l;}
+function input(value,change,aria){const i=el('input');i.value=value;i.setAttribute('aria-label',aria);i.oninput=()=>{change(i.value);update();};return i;}
+function select(values,value,change,aria){const s=el('select');s.setAttribute('aria-label',aria);for(const v of values){const o=el('option',v);o.value=v;s.append(o);}s.value=value;s.onchange=()=>{change(s.value);update();};return s;}
+function rows(){
+ $('rule-list').replaceChildren();state.rules.forEach((r,i)=>{const p=el('div',null,'part');const remove=el('button','削除','remove');remove.onclick=()=>{state.rules.splice(i,1);rows();update();};p.append(remove,el('strong','ルール '+(i+1)));p.append(label('コマンドの先頭（JSON 配列）',input(JSON.stringify(r.pattern),v=>{try{r.pattern=JSON.parse(v);}catch{r.pattern=null;}},'ルール '+(i+1)+' の引数配列')));p.append(label('判定',select(['allow','prompt','forbidden'],r.decision,v=>r.decision=v,'ルール '+(i+1)+' の判定')));p.append(label('理由',input(r.reason,v=>r.reason=v,'ルール '+(i+1)+' の理由')));$('rule-list').append(p);});
+ $('hook-list').replaceChildren();state.hooks.forEach((h,i)=>{const p=el('div',null,'part'),remove=el('button','削除','remove');remove.onclick=()=>{state.hooks.splice(i,1);rows();update();};const enabled=el('input');enabled.type='checkbox';enabled.checked=h.enabled;enabled.onchange=()=>{h.enabled=enabled.checked;update();};const l=label('このフックを組み込む',enabled);l.className='toggle';p.append(remove,el('strong','フック '+(i+1)),l);p.append(label('イベント',select(['PreToolUse','PostToolUse','SessionStart','Stop'],h.event,v=>h.event=v,'フック '+(i+1)+' のイベント')));p.append(label('マッチャー',input(h.matcher,v=>h.matcher=v,'フック '+(i+1)+' のマッチャー')));p.append(label('実行環境のコマンド',input(h.command,v=>h.command=v,'フック '+(i+1)+' のコマンド')));$('hook-list').append(p);});
+}
+function render(){for(const id of fieldIds)$(id).value=state[id];$('policyEnabled').checked=state.policyEnabled;$('policy-rules').replaceChildren();for(const r of policyRules){const p=el('div',null,'part'),check=el('input');check.type='checkbox';check.checked=state.policy.rules[r.id];check.setAttribute('aria-label',r.title);check.onchange=()=>{state.policy.rules[r.id]=check.checked;update();};const l=el('label',null,'toggle');l.append(check,el('strong',r.title));p.append(l,el('p',r.hint));$('policy-rules').append(p);}rows();update();}
+for(const id of fieldIds)$(id).oninput=sync;$('policyEnabled').onchange=()=>{sync();$('verdict').replaceChildren();};$('file-select').onchange=preview;
+$('add-rule').onclick=()=>{state.rules.push({pattern:['git','push'],decision:'prompt',reason:'push 前に確認'});rows();update();};
+$('add-hook').onclick=()=>{state.hooks.push({event:'PreToolUse',matcher:'^Bash$',command:'node /opt/hooks/check.mjs',enabled:false});rows();update();};
+$('save').onclick=()=>{try{sync();validate(state);localStorage.setItem('codex-customizer.v2',JSON.stringify(state));notice('構成をブラウザーに保存しました。Codex の環境には適用していません。');}catch(e){notice(e.message);}};
+function download(name,bytes,type){const u=URL.createObjectURL(new Blob([bytes],{type})),a=el('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}
+$('download-config').onclick=()=>{try{sync();validate(state);download('customizer.json',JSON.stringify(state,null,2),'application/json');}catch(e){notice(e.message);}};
+$('download-zip').onclick=()=>{sync();if(!output){notice('構成の入力エラーを修正してください');return;}const files=Object.fromEntries(Object.entries(output.files).map(([p,s])=>[p,strToU8(s)]));files['APPLY.txt']=strToU8('Target: '+output.manifest.target.codexHome+'\n既存の設定・AGENTS.md・同名ルールは差分を確認して統合してください。追加ポリシーのフックには Node.js と POSIX shell、信頼レビューが必要です。\n現在の環境を自動更新するものではありません。\n');download('codex-'+state.setId+'.zip',zipSync(files),'application/zip');};
+$('load-config').onclick=()=>$('config-file').click();$('config-file').onchange=async e=>{try{const f=e.target.files[0];if(!f)return;if(f.size>100000)throw Error('100KB以下の構成 JSON を選んでください');state=validate(JSON.parse(await f.text()));render();notice('構成を読み込みました。保存するとこのブラウザーに記憶します。');}catch(e){notice(e.message);}finally{e.target.value='';}};
+$('simulate').onclick=()=>{sync();clearTimeout(timer);worker?.terminate();if(!state.policyEnabled){$('verdict').textContent='追加フックは組み込まれません。Codex の標準判定だけが適用されます。';return;}try{validate(state);}catch(e){$('verdict').textContent=e.message;return;}worker=new Worker('worker.js',{type:'module'});$('verdict').textContent='解析中…';worker.onmessage=e=>{clearTimeout(timer);worker.terminate();const r=e.data;$('verdict').replaceChildren(el('strong',r.decision==='deny'?'追加フックが拒否':'追加フックの拒否条件に該当なし'),...r.findings.map(f=>el('p',f.message)),el('p','Codex の標準判定・承認・サンドボックスは別途適用されます。'));};worker.onerror=()=>{clearTimeout(timer);worker.terminate();$('verdict').textContent='解析に失敗したため拒否';};timer=setTimeout(()=>{worker.terminate();$('verdict').textContent='解析が3秒を超えたため拒否';},3000);worker.postMessage({command:$('command').value,policy:state.policy});};
+try{for(const f of ['hook.mjs','worker-node.mjs']){const response=await fetch('runtime/'+f);if(!response.ok)throw Error('実行ファイルの読み込みに失敗しました');runtime[f]=await response.text();}}catch(e){notice(e.message);}
+render();
