@@ -2,6 +2,7 @@ export const partTypes = {
   config: {name:'基本設定', hint:'モデル・推論・実行環境'},
   instruction: {name:'指示', hint:'AGENTS.md に結合'},
   skill: {name:'スキル', hint:'SKILL.md と付属ファイル'},
+  mcp: {name:'MCP接続',hint:'外部ツールの接続先'},
   subagent: {name:'サブエージェント', hint:'複数ロールで共有する専門エージェント'},
   rule: {name:'コマンドルール', hint:'コマンドの判定'},
   hook: {name:'フック', hint:'イベントに処理を追加'},
@@ -17,7 +18,9 @@ export function nextPartId(parts, prefix='part') {
 
 export function selectedComponents(a) {
   const role=a.roles.find(r=>r.id===a.activeRole);
-  return [...new Set([...a.commonPartIds,...(role?.partIds||[])])].map(id=>a.components.find(p=>p.id===id));
+  const ids=[...new Set([...a.commonPartIds,...(role?.partIds||[])])];
+  for(const id of [...ids]){const p=a.components.find(p=>p.id===id);if(p?.type==='subagent')for(const skill of p.data.skillIds||[])if(!ids.includes(skill))ids.push(skill);}
+  return ids.map(id=>a.components.find(p=>p.id===id));
 }
 
 // Materialize the same ordered parts for both the Web UI and CLI exporter.
@@ -31,7 +34,7 @@ export function materialize(a) {
     const d=part.data;
     switch(part.type) {
       case 'config':
-        for(const [key,value] of Object.entries(d)) if(value!=='') result[key]=value;
+        for(const [key,value] of Object.entries(d)) if(value!=='') result[key]=key==='agentSettings'?{...result.agentSettings,...value}:value;
         break;
       case 'instruction': result.instructions=[result.instructions,d.heading===false?d.content:`## ${part.name}\n\n${d.content}`].filter(s=>s.trim()).join('\n\n'); break;
       case 'skill': result.skills.push({id:part.id,name:part.name,common:true,files:structuredClone(d.files)}); break;
@@ -62,6 +65,7 @@ export function removeComponent(a, scope, id) {
 
 export function deleteComponent(a,id) {
   a.components=a.components.filter(p=>p.id!==id);
+  for(const part of a.components)if(part.type==='subagent'&&part.data.skillIds)part.data.skillIds=part.data.skillIds.filter(v=>v!==id);
   a.commonPartIds=a.commonPartIds.filter(v=>v!==id);
   for(const role of a.roles) role.partIds=(role.partIds||[]).filter(v=>v!==id);
 }
@@ -100,10 +104,11 @@ export function toWorkbench(input) {
 export function newComponent(a,type,policyRules={}) {
   const id=nextPartId(a.components,type);
   const data={
+    mcp:{serverName:nextPartId(a.components.filter(p=>p.type==='mcp').map(p=>({id:p.data.serverName})),'server'),transport:'stdio',command:'npx',args:[],env:{},envVars:[],url:'',bearerTokenEnvVar:'',envHttpHeaders:{},enabledTools:[],disabledTools:[],enabled:true,required:false},
     config:{model:'',reasoning:'',sandbox:'workspace-write',approval:'on-request',baseConfig:''},
     instruction:{content:''},
     skill:{files:[{path:'SKILL.md',content:`---\nname: ${id}\ndescription: このスキルを使う場面を記述してください。\n---\n\n# 手順\n`}]},
-    subagent:{agentName:nextPartId(a.components.filter(p=>p.type==='subagent').map(p=>({id:p.data.agentName})),'specialist'),description:'このサブエージェントへ依頼する作業を記述してください。',instructions:'担当する作業に集中し、結果と根拠を親エージェントへ報告してください。',model:'',reasoning:''},
+    subagent:{agentName:nextPartId(a.components.filter(p=>p.type==='subagent').map(p=>({id:p.data.agentName})),'specialist'),description:'このサブエージェントへ依頼する作業を記述してください。',instructions:'担当する作業に集中し、結果と根拠を親エージェントへ報告してください。',model:'',reasoning:'',skillIds:[]},
     rule:{pattern:['git','push'],decision:'prompt',reason:'push 前に確認'},
     hook:{event:'Stop',matcher:'',command:'echo complete'},
     policy:{rules:structuredClone(policyRules)},
@@ -136,6 +141,12 @@ export function dropComponent(a, payload, target) {
 
 export function affectedScopes(a,id) {
   const common=a.commonPartIds.includes(id);
+  if(a.components.find(p=>p.id===id)?.type==='skill'){
+    const subagents=a.components.filter(p=>p.type==='subagent'&&p.data.skillIds?.includes(id));
+    const routes=ids=>subagents.filter(p=>ids.includes(p.id)).map(p=>({id:p.id,name:p.name}));
+    const viaCommon=routes(a.commonPartIds);
+    return {common:common||viaCommon.length>0,viaCommon,subagents:subagents.map(p=>({id:p.id,name:p.name})),roles:a.roles.flatMap(r=>{const via=routes([...new Set([...a.commonPartIds,...r.partIds])]),direct=r.partIds.includes(id),inherited=common;return direct||inherited||via.length?[{id:r.id,name:r.name,direct,inherited,via,source:inherited?(direct?'both':'common'):'direct'}]:[];})};
+  }
   return {common,roles:a.roles.filter(r=>common||r.partIds?.includes(id)).map(r=>({
     id:r.id,name:r.name,source:common?(r.partIds?.includes(id)?'both':'common'):'direct',
   }))};

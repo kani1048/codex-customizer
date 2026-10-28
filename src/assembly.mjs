@@ -1,9 +1,10 @@
+import {reasoningLevels,validApproval,validateAgentSettings,validateMcp,mcpConfig,reducibleFeatures} from './capabilities.mjs';
 import {materialize,partTypes,selectedComponents} from './workbench.mjs';
 import parseTOML from '@iarna/toml/parse-string.js';
 import stringifyTOML from '@iarna/toml/stringify.js';
 const TOML={parse:parseTOML,stringify:stringifyTOML};
 import {defaultPolicy,validatePolicy} from 'exec-policy/src/policy.mjs';
-export const defaults={version:2,name:'開発用 Codex',setId:'development',model:'',reasoning:'',sandbox:'workspace-write',approval:'on-request',instructions:'変更の目的を確認し、必要な範囲で実装と検証を行ってください。\nユーザーには日本語で簡潔に説明してください。',policyEnabled:true,policy:structuredClone(defaultPolicy),rules:[],hooks:[],baseConfig:'',instructionParts:[],skills:[],roles:[],activeRole:'',hookFiles:[],components:[],commonPartIds:[],workbenchVersion:0};
+export const defaults={version:2,name:'開発用 Codex',setId:'development',model:'',reasoning:'',sandbox:'workspace-write',approval:'on-request',instructions:'変更の目的を確認し、必要な範囲で実装と検証を行ってください。\nユーザーには日本語で簡潔に説明してください。',policyEnabled:true,policy:structuredClone(defaultPolicy),rules:[],hooks:[],baseConfig:'',instructionParts:[],skills:[],roles:[],activeRole:'',hookFiles:[],components:[],commonPartIds:[],workbenchVersion:0,partsLibraryVersion:0,agentSettings:{}};
 const json=x=>JSON.stringify(x,null,2)+'\n';
 const object=x=>x&&typeof x==='object'&&!Array.isArray(x);
 function text(v,label,max=12000){if(typeof v!=='string'||v.length>max)throw Error(label+'が不正です');return v;}
@@ -14,15 +15,19 @@ export function validate(a){
  }
  if(!object(a)||a.version!==2)throw Error('構成ファイルの形式が不正です');
  if(Object.keys(a).some(k=>!Object.keys(defaults).includes(k)))throw Error('未知の構成項目があります');
- a={instructionParts:[],skills:[],roles:[],activeRole:'',hookFiles:[],components:[],commonPartIds:[],workbenchVersion:0,...a};
+ a={instructionParts:[],skills:[],roles:[],activeRole:'',hookFiles:[],components:[],commonPartIds:[],workbenchVersion:0,partsLibraryVersion:0,agentSettings:{},...a};
+ a=structuredClone(a);
+ if(a.approval==='untrusted')a.approval='on-request';
+ for(const p of a.components||[])if(p.type==='config'&&p.data?.approval==='untrusted')p.data.approval='on-request';
+ validateAgentSettings(a.agentSettings);
  validateWorkbench(a);
  validateComposition(a);
  text(a.name,'構成名',100);if(!a.name.trim())throw Error('構成名を入力してください');
  if(typeof a.setId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(a.setId))throw Error('セットIDには英数字・ピリオド・ハイフン・アンダースコアを指定してください');
  text(a.model,'モデル',100);if(/[\n\r]/.test(a.model))throw Error('モデル名は1行にしてください');
- if(!['','low','medium','high','xhigh'].includes(a.reasoning))throw Error('推論設定が不正です');
- if(!['read-only','workspace-write'].includes(a.sandbox))throw Error('サンドボックス設定が不正です');
- if(!['on-request','untrusted'].includes(a.approval))throw Error('承認設定が不正です');
+ if(!['',...reasoningLevels].includes(a.reasoning))throw Error('推論設定が不正です');
+ if(!['read-only','workspace-write','danger-full-access'].includes(a.sandbox))throw Error('サンドボックス設定が不正です');
+ if(!validApproval(a.approval))throw Error('承認設定が不正です');
  text(a.instructions,'指示',20000);text(a.baseConfig,'ベース設定',60000);TOML.parse(a.baseConfig);
  if(typeof a.policyEnabled!=='boolean')throw Error('ポリシー設定が不正です');validatePolicy(a.policy);
  if(!Array.isArray(a.rules)||a.rules.length>100)throw Error('ルールが多すぎます');
@@ -39,7 +44,13 @@ export function compile(input,runtimeFiles={}){
  const root='${CODEX_HOME:-$HOME/.codex}';
  // Keep unknown imported settings while overriding only fields owned by this editor.
  for(const [k,v]of [['model',a.model],['model_reasoning_effort',a.reasoning]])if(v)config[k]=v;
- config.sandbox_mode=a.sandbox;config.approval_policy=a.approval;
+ const explicit=key=>source.workbenchVersion!==1||selectedComponents(source).some(p=>p.type==='config'&&p.data[key]!==undefined&&p.data[key]!=='')||JSON.stringify(source[key])!==JSON.stringify(defaults[key]);
+ if(explicit('sandbox')||config.sandbox_mode===undefined)config.sandbox_mode=a.sandbox;
+ if(explicit('approval')||config.approval_policy===undefined)config.approval_policy=a.approval;
+ if(!validApproval(config.approval_policy))throw Error('ベース設定の approval_policy を on-request・never・詳細設定から選んでください');
+ if(!['read-only','workspace-write','danger-full-access'].includes(config.sandbox_mode))throw Error('ベース設定の sandbox_mode が不正です');
+ if(Object.keys(a.agentSettings).length){if(config.agents!==undefined&&!object(config.agents))throw Error('ベースの agents が不正です');config.agents={...config.agents,...a.agentSettings};if(a.agentSettings.max_concurrent_threads_per_session!==undefined)delete config.agents.max_threads;}
+ for(const p of selectedComponents(source).filter(p=>p.type==='mcp')){if(config.mcp_servers!==undefined&&!object(config.mcp_servers))throw Error('ベースの mcp_servers が不正です');config.mcp_servers??={};const key=p.data.serverName;if(selectedComponents(source).filter(q=>q.type==='mcp'&&q.data.serverName===key).length>1)throw Error('MCPサーバー名が重複しています: '+key);const before=config.mcp_servers[key]||{};if(!object(before))throw Error('ベースのMCP設定が不正です');const next={...before};for(const k of ['command','args','cwd','env','env_vars','url','bearer_token_env_var','env_http_headers','enabled_tools','disabled_tools'])delete next[k];config.mcp_servers[key]={...next,...mcpConfig(p.data)};}
  const files={};
  const role=a.roles.find(r=>r.id===a.activeRole);
  const parts=role?role.instructionIds.map(id=>a.instructionParts.find(p=>p.id===id)):[];
@@ -53,8 +64,8 @@ export function compile(input,runtimeFiles={}){
  if(subagents.length){
   if(config.agents!==undefined&&!object(config.agents))throw Error('ベースの agents はテーブルである必要があります');
   config.agents??={};
-  if(config.agents.enabled===false)warnings.push('選択したサブエージェントを呼び出せるよう agents.enabled を true に変更します。');
-  config.agents.enabled=true;
+  if(config.agents.enabled===false)warnings.push('サブエージェントの定義は出力しますが、全体設定で呼び出しが無効です。');
+  config.agents.enabled??=true;
   const names=new Set();
   for(const part of subagents){
    const d=part.data;
@@ -64,6 +75,12 @@ export function compile(input,runtimeFiles={}){
    const definition={name:d.agentName,description:d.description,developer_instructions:d.instructions};
    if(d.model)definition.model=d.model;
    if(d.reasoning)definition.model_reasoning_effort=d.reasoning;
+   if(d.verbosity)definition.model_verbosity=d.verbosity;
+   if(d.reasoningSummary)definition.model_reasoning_summary=d.reasoningSummary;
+   if(d.disabledFeatures?.length)definition.features=Object.fromEntries(d.disabledFeatures.map(k=>[k,false]));
+   const owned=new Set(d.skillIds||[]);
+   definition.skills={bundled:{enabled:false},config:a.skills.filter(s=>s.common||role?.skillIds.includes(s.id)).map(s=>({path:'../skills/'+s.id,enabled:owned.has(s.id)}))};
+   if(d.includeSkillInstructions!==undefined)definition.skills.include_instructions=d.includeSkillInstructions;
    files[path]=TOML.stringify(definition);
    config.agents[d.agentName]={description:d.description,config_file:path};
   }
@@ -97,13 +114,14 @@ function validateComposition(a){
  const paths=(files,label)=>{list(files,label,300);const seen=new Set();for(const f of files){if(!object(f))throw Error(label+'が不正です');text(f.path,'ファイル名',240);if(!f.path||f.path.split('/').some(p=>!p||p==='.'||p==='..'||p==='__proto__'||!/^[-a-zA-Z0-9_.]+$/.test(p))||seen.has(f.path))throw Error(label+'の相対パスが不正または重複しています');if([...seen].some(p=>p.startsWith(f.path+'/')||f.path.startsWith(p+'/')))throw Error(label+'のファイルとディレクトリが衝突しています');seen.add(f.path);text(f.content,'ファイル内容',1000000);}return seen;};
  const partIds=unique(a.instructionParts,'指示パーツ');for(const p of a.instructionParts)text(p.content,'指示パーツ',20000);
  const skillIds=unique(a.skills,'スキル');for(const s of a.skills){if(typeof s.common!=='boolean')throw Error('共通スキルの指定が不正です');if(!paths(s.files,'スキルファイル').has('SKILL.md'))throw Error('スキルには SKILL.md が必要です');}
- const roleIds=unique(a.roles,'ロール');for(const r of a.roles){for(const [key,ids]of [['instructionIds',partIds],['skillIds',skillIds]]){list(r[key],key);if(new Set(r[key]).size!==r[key].length||r[key].some(v=>!ids.has(v)))throw Error('ロールの参照先が不正です: '+key);}text(r.model,'ロールのモデル',100);if(/[\r\n]/.test(r.model)||!['','low','medium','high','xhigh'].includes(r.reasoning))throw Error('ロールのモデル設定が不正です');}
+ const roleIds=unique(a.roles,'ロール');for(const r of a.roles){for(const [key,ids]of [['instructionIds',partIds],['skillIds',skillIds]]){list(r[key],key);if(new Set(r[key]).size!==r[key].length||r[key].some(v=>!ids.has(v)))throw Error('ロールの参照先が不正です: '+key);}text(r.model,'ロールのモデル',100);if(/[\r\n]/.test(r.model)||!['',...reasoningLevels].includes(r.reasoning))throw Error('ロールのモデル設定が不正です');}
  if(typeof a.activeRole!=='string'||(a.activeRole&&!roleIds.has(a.activeRole)))throw Error('出力ロールが存在しません');
  paths(a.hookFiles,'フックファイル');
  if(new TextEncoder().encode(JSON.stringify(a,null,2)+'\n').length>5000000)throw Error('構成全体は5MB以下にしてください');
 }
 
 function validateWorkbench(a){
+ if(![0,1].includes(a.partsLibraryVersion))throw Error('パーツ一覧の形式が不正です');
  if(![0,1].includes(a.workbenchVersion))throw Error('作業台の形式が不正です');
  const validId=v=>typeof v==='string'&&/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(v);
  if(!Array.isArray(a.components)||a.components.length>300)throw Error('パーツの一覧が不正です');
@@ -112,7 +130,7 @@ function validateWorkbench(a){
   if(!object(p)||!validId(p.id)||ids.has(p.id)||!Object.hasOwn(partTypes,p.type)||!object(p.data))throw Error('パーツのID・種類・内容が不正です');
   ids.add(p.id);text(p.name,'パーツ名',100);if(!p.name.trim())throw Error('パーツ名を入力してください');
   const d=p.data;
-  const keys={config:['model','reasoning','sandbox','approval','baseConfig'],instruction:['content','heading'],skill:['files'],rule:['pattern','decision','reason'],hook:['event','matcher','command'],policy:['rules'],file:['path','content'],subagent:['agentName','description','instructions','model','reasoning']}[p.type];
+  const keys={config:['model','reasoning','sandbox','approval','baseConfig','agentSettings'],instruction:['content','heading'],skill:['files'],rule:['pattern','decision','reason'],hook:['event','matcher','command'],policy:['rules'],file:['path','content'],mcp:['serverName','transport','command','args','cwd','env','envVars','url','bearerTokenEnvVar','envHttpHeaders','enabledTools','disabledTools','startupTimeoutSec','toolTimeoutSec','enabled','required'],subagent:['agentName','description','instructions','model','reasoning','skillIds','verbosity','reasoningSummary','disabledFeatures','includeSkillInstructions']}[p.type];
   if(Object.keys(d).some(k=>!keys.includes(k)))throw Error('未知のパーツ設定があります');
   // Reuse the standard schema for each typed part, including unattached library parts.
   const sample={...structuredClone(defaults),policyEnabled:false};
@@ -123,8 +141,13 @@ function validateWorkbench(a){
     if(typeof d.agentName!=='string'||!/^[a-z][a-z0-9_-]{0,63}$/.test(d.agentName)||['enabled','max_threads','max_depth','max_concurrent_threads_per_session','default_subagent_model','default_subagent_reasoning_effort','interrupt_message','constructor','prototype','__proto__'].includes(d.agentName))throw Error('サブエージェントの呼び出し名が不正または予約済みです');
     text(d.description,'サブエージェントの用途',2000);text(d.instructions,'サブエージェントの指示',20000);
     if(!d.description.trim()||!d.instructions.trim())throw Error('サブエージェントの用途と指示を入力してください');
+    if(d.verbosity!==undefined&&!['','low','medium','high'].includes(d.verbosity))throw Error('回答の詳しさが不正です');
+    if(d.reasoningSummary!==undefined&&!['','auto','concise','detailed','none'].includes(d.reasoningSummary))throw Error('推論の要約が不正です');
+    if(d.disabledFeatures!==undefined&&(!Array.isArray(d.disabledFeatures)||new Set(d.disabledFeatures).size!==d.disabledFeatures.length||d.disabledFeatures.some(k=>!reducibleFeatures.includes(k))))throw Error('担当の機能制限が不正です');
+    if(d.includeSkillInstructions!==undefined&&typeof d.includeSkillInstructions!=='boolean')throw Error('スキル指示の設定が不正です');
     sample.model=d.model??'';sample.reasoning=d.reasoning??'';
     break;
+   case 'mcp':validateMcp(d);break;
    case 'skill':sample.skills=[{id:p.id,name:p.name,common:true,files:d.files}];break;
    case 'rule':sample.rules=[d];break;
    case 'hook':sample.hooks=[{...d,enabled:true}];break;
@@ -134,6 +157,7 @@ function validateWorkbench(a){
   validate(sample);
  }
  function refs(value){if(!Array.isArray(value)||value.length>300||new Set(value).size!==value.length||value.some(id=>!ids.has(id)))throw Error('組み立てたパーツの参照が不正です');}
+ for(const part of a.components)if(part.type==='subagent'&&part.data.skillIds!==undefined){refs(part.data.skillIds);if(part.data.skillIds.some(id=>a.components.find(p=>p.id===id)?.type!=='skill'))throw Error('サブエージェントにはスキルだけを組み込めます');}
  refs(a.commonPartIds);
  if(Array.isArray(a.roles))for(const role of a.roles){if(!object(role))throw Error('ロールが不正です');if(role.partIds!==undefined)refs(role.partIds);}
 }

@@ -13,25 +13,26 @@
  <div class="toolbar"><label>構成名<input id="name" maxlength="100"></label><label>セットID<input id="setId" maxlength="64"></label><button id="save">ブラウザーに保存</button><button id="load-config">構成を読み込む ↑</button><input id="config-file" type="file" accept=".json" hidden></div>
  <p id="status" role="status"></p>
  <section data-panel="build" class="workbench">
-  <div class="workbench-top"><div><p class="eyebrow">ONE WORKBENCH / EVERY PART</p><h2>部品を組み上げる</h2><p class="description">設定も、指示も、スキルも、サブエージェントも。置く場所で組み込み先を、置く位置で順序を決めます。編集はカードをダブルクリック。</p></div><button id="review" class="primary">CODEX_HOME を確認 →</button></div>
-  <div class="builder-board">
-   <aside class="parts-palette" data-drop-zone="library" aria-label="パーツライブラリの配置先">
-    <div class="palette-title"><div><p class="eyebrow">PARTS LIBRARY</p><h3>使えるパーツ</h3></div><button id="new-part">＋ パーツ</button></div>
-    <label class="search-label">パーツを探す<input id="part-search" type="search" placeholder="名前・種類で絞り込む"></label>
-    <div id="type-filters" class="type-filters" aria-label="パーツの種類"></div>
-    <div class="palette-tabs"><button id="tab-library" aria-pressed="true">自分のパーツ</button><button id="tab-examples" aria-pressed="false">すぐ使える例</button></div>
-    <div id="palette-items" class="palette-items"></div><div id="library-return" class="library-return">↩ ここへ戻して組み立てから外す<br><small>パーツはライブラリに残ります</small></div>
-    <button id="import-skill" class="import-button">スキルのフォルダーを取り込む ↑</button><input id="skill-folder" type="file" webkitdirectory multiple hidden>
-   </aside>
-   <div class="role-canvas">
-    <div class="scope-bar"><label>組み立て・出力する対象<select id="active-scope"></select></label><button id="add-role">＋ ロール</button></div>
-    <div id="scope-targets" class="scope-targets" aria-label="パーツの配置先"></div><div id="scope-info"></div>
-    <div class="stack-heading"><div><p class="eyebrow">ASSEMBLY STACK</p><h3 id="stack-title"></h3></div><span id="stack-count" class="count-badge"></span></div>
-    <p class="small">ライブラリからここへ、または上の共通・ロールへドラッグ。外すときはライブラリへ戻します。</p>
-    <div id="assembly-stack" class="drop-zone" data-drop-zone="stack" aria-label="パーツの組み立て先"></div>
-    <div class="assembly-footer"><span id="assembly-summary"></span><button id="example-role">開発ロールの例を追加</button></div>
+  <div class="workbench-top"><div><p class="eyebrow">ONE WORKBENCH / EVERY PART</p><h2>部品を組み上げる</h2><p class="description">基本設定は項目ごとに選択。指示・スキル・サブエージェントは部品を組み込みます。置く場所で組み込み先を、置く位置で順序を決めます。編集はカードをダブルクリック。</p></div><button id="review" class="primary">CODEX_HOME を確認 →</button></div>
+  <div class="assembly-controls">
+   <div class="scope-bar"><label>組み立て・出力する対象<select id="active-scope"></select></label><button id="add-role">＋ ロール</button><button id="example-role">開発ロールの例を追加</button></div>
+   <div id="scope-targets" class="scope-targets" aria-label="パーツの配置先"></div><div id="scope-info"></div>
+  </div>
+  <div class="section-layout">
+   <div class="section-workspace">
+    <div class="section-tools"><label class="search-label">パーツを探す<input id="part-search" type="search" placeholder="名前・種類で絞り込む"></label><button id="new-part">＋ パーツ</button></div>
+    <div id="type-filters" class="type-filters" aria-label="部品別セクション"></div>
     <p id="builder-status" class="builder-status" role="status" aria-live="polite"></p>
+    <div id="component-sections"></div><input id="skill-folder" type="file" webkitdirectory multiple hidden>
    </div>
+   <aside class="configuration-overview" aria-label="CODEX_HOME の全体概要">
+    <p class="eyebrow">YOUR CODEX_HOME</p><h3 id="overview-name"></h3><p id="overview-scope" class="small"></p>
+    <div id="overview-counts" class="overview-counts"></div><div id="overview-settings" class="overview-settings"></div>
+    <h4>部品ごとの構成</h4><div id="overview-sections"></div>
+    <details open class="overview-parts"><summary>組み込む部品と継承元</summary><ol id="overview-parts"></ol></details>
+    <h4>生成するファイル</h4><div id="overview-files"></div><p id="overview-error" role="status"></p>
+    <button id="overview-review" class="primary">CODEX_HOME を確認 →</button><p class="small">共通パーツ ＋ 選択ロール → CODEX_HOME → runtime</p>
+   </aside>
   </div>
  </section>
  <section data-panel="output" class="output-panel" hidden>

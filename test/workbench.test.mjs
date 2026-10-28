@@ -116,7 +116,7 @@ test('同じサブエージェントを複数ロールで共有し標準の登�
   a.activeRole=id;const out=compile(a);results.push(out);
   const config=TOML.parse(out.files['config.toml']),definition=TOML.parse(out.files['agents/reviewer.toml']);
   assert.equal(config.agents.enabled,true);assert.deepEqual(config.agents.reviewer,{description:agent.data.description,config_file:'agents/reviewer.toml'});
-  assert.deepEqual(definition,{name:'reviewer',description:agent.data.description,developer_instructions:agent.data.instructions,model:'selected-model',model_reasoning_effort:'high'});
+  assert.deepEqual(definition,{name:'reviewer',description:agent.data.description,developer_instructions:agent.data.instructions,model:'selected-model',model_reasoning_effort:'high',skills:{bundled:{enabled:false},config:[]}});
   assert.match(out.files['AGENTS.md'],/`reviewer`/);assert.ok(out.files['AGENTS.md'].includes(agent.data.description));
   assert.ok(!('sandbox_mode' in definition));assert.ok(!('approval_policy' in definition));
  }
@@ -130,9 +130,9 @@ test('共通サブエージェントの重複参照は1回だけ出力し親の�
  const a=fresh();const p=newComponent(a,'subagent');p.data.agentName='inspector';a.commonPartIds.push(p.id);role(a,'dev');placeComponent(a,'dev',p.id,0);
  a.baseConfig='[agents]\nenabled=false\nmax_concurrent_threads_per_session=3\n[agents.existing]\ndescription="existing"\nconfig_file="agents/existing.toml"\n';
  const out=compile(a),config=TOML.parse(out.files['config.toml']),definition=TOML.parse(out.files['agents/inspector.toml']);
- assert.equal(config.agents.enabled,true);assert.equal(config.agents.max_concurrent_threads_per_session,3);assert.equal(config.agents.existing.description,'existing');
+ assert.equal(config.agents.enabled,false);assert.equal(config.agents.max_concurrent_threads_per_session,3);assert.equal(config.agents.existing.description,'existing');
  assert.ok(!('model' in definition));assert.ok(!('model_reasoning_effort' in definition));assert.equal(Object.keys(out.files).filter(p=>p==='agents/inspector.toml').length,1);
- assert.equal(out.files['AGENTS.md'].split('`inspector`').length,2);assert.ok(out.warnings.some(w=>w.includes('agents.enabled')));
+ assert.equal(out.files['AGENTS.md'].split('`inspector`').length,2);assert.ok(out.warnings.some(w=>w.includes('呼び出しが無効')));
 });
 
 test('サブエージェントの不正な名前・欠落・権限設定を拒否し呼び出し名の衝突を検出',()=>{
