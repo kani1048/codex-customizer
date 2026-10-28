@@ -25,3 +25,22 @@ test('引数エラー・入出力エラーはstderrのJSONと終了コードで�
 test('全コマンドの--help/-h/help形式で使い方と全オプションを確認できる',()=>{const commands={init:['output'],show:['input'],validate:['input'],set:['input','path','value','output','in-place'],plan:['input'],export:['input','directory','zip'],simulate:['input','command','ast']};for(const [cmd,flags]of Object.entries(commands)){for(const args of [[cmd,'--help'],[cmd,'-h'],['help',cmd]]){const r=run(args);assert.equal(r.status,0,r.stderr);assert.equal(r.stderr,'');assert.ok(r.stdout.startsWith('codex-customizer '+cmd+'\n'));assert.match(r.stdout,/使い方:/);assert.match(r.stdout,/使用例:/);assert.match(r.stdout,/終了コード:/);for(const f of flags)assert.ok(r.stdout.includes('--'+f),cmd+' '+f);}}});
 test('ヘルプは入出力や構成検証より先に処理される',()=>temp(d=>{const config=join(d,'config.json'),output=join(d,'unused.json');writeFileSync(config,'not json');for(const args of [['set','--input',config,'--in-place','--help'],['init','--output',output,'-h'],['validate','--input','/missing','--help'],['export','--input','-','--help']]){const r=run(args,'broken');assert.equal(r.status,0,r.stderr);assert.equal(r.stderr,'');}assert.equal(readFileSync(config,'utf8'),'not json');assert.equal(existsSync(output),false);}));
 test('存在しないコマンドのヘルプを成功扱いしない',()=>{for(const args of [['missing','--help'],['help','missing'],['help','set','extra'],['--help','missing']]){const r=run(args);assert.equal(r.status,2);assert.equal(JSON.parse(r.stderr).ok,false);assert.equal(r.stdout,'');}for(const args of [[],['--help'],['-h'],['help']]){const r=run(args);assert.equal(r.status,0);assert.match(r.stdout,/<COMMAND> --help/);}});
+
+test('共通パーツとロールのポリシーをCLIの検証・出力・シミュレーションにも適用',()=>temp(d=>{
+ const a=fresh();a.policyEnabled=false;a.instructions='';a.workbenchVersion=1;
+ a.components=[{id:'model-part',name:'モデル',type:'config',data:{model:'assembled-model'}},{id:'policy-part',name:'追加検査',type:'policy',data:{rules:structuredClone(defaults.policy.rules)}}];
+ a.commonPartIds=['model-part'];a.roles=[{id:'dev',name:'開発',model:'',reasoning:'',instructionIds:[],skillIds:[],partIds:['policy-part']}];a.activeRole='dev';
+ let r=run(['validate','--input','-'],a);assert.equal(r.status,0,r.stderr);
+ const directory=join(d,'assembled');r=run(['export','--input','-','--directory',directory],a);assert.equal(r.status,0,r.stderr);assert.match(readFileSync(join(directory,'config.toml'),'utf8'),/assembled-model/);assert.ok(existsSync(join(directory,'hooks/exec-policy/hook.mjs')));
+ r=run(['simulate','--input','-','--command','python3 -c "print(1)"'],a);assert.equal(r.status,3,r.stderr);assert.equal(JSON.parse(r.stdout).decision,'deny');
+ a.activeRole='';r=run(['simulate','--input','-','--command','python3 -c "print(1)"'],a);assert.equal(r.status,0);assert.equal(JSON.parse(r.stdout).decision,'not-applied');
+}));
+
+test('CLIから共有サブエージェントの定義と親の呼び出し案内をCODEX_HOMEへ出力',()=>temp(d=>{
+ const a=fresh();a.policyEnabled=false;a.workbenchVersion=1;
+ a.components=[{id:'shared-reviewer',name:'レビュー担当',type:'subagent',data:{agentName:'reviewer',description:'レビューを依頼する',instructions:'根拠を調査し親へ報告する。',model:'',reasoning:''}}];
+ a.roles=['dev','review'].map(id=>({id,name:id,model:'',reasoning:'',instructionIds:[],skillIds:[],partIds:['shared-reviewer']}));a.activeRole='dev';
+ const directory=join(d,'subagents'),result=run(['export','--input','-','--directory',directory],a);assert.equal(result.status,0,result.stderr);
+ assert.match(readFileSync(join(directory,'agents/reviewer.toml'),'utf8'),/developer_instructions/);assert.match(readFileSync(join(directory,'config.toml'),'utf8'),/config_file = "agents\/reviewer.toml"/);assert.match(readFileSync(join(directory,'AGENTS.md'),'utf8'),/`reviewer`/);
+ const restored=run(['show','--input','-'],a);assert.equal(restored.status,0,restored.stderr);assert.deepEqual(JSON.parse(restored.stdout).roles.map(r=>r.partIds),[['shared-reviewer'],['shared-reviewer']]);
+}));

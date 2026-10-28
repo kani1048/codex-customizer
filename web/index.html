@@ -1,11 +1,49 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Codex Customizer</title><link rel="stylesheet" href="style.css"></head><body>
-<aside class="sidebar"><a href="./" class="brand"><b>c/</b><span>CODEX<br>CUSTOMIZER</span></a><p class="nav-caption">ASSEMBLY WORKSPACE</p><nav><button data-page="basics" class="selected">01 <span>基本設定</span></button><button data-page="instructions">02 <span>エージェントへの指示</span></button><button data-page="rules">03 <span>コマンドの許可ルール</span></button><button data-page="hooks">04 <span>ライフサイクルフック</span></button><button data-page="policy">05 <span>追加の実行ポリシー</span></button><button data-page="output">06 <span>構成の確認・出力</span></button></nav><div class="sidebar-bottom"><span class="dot"></span> LOCAL CONFIG BUILDER<p>ブラウザーで組み立て、<br>Codex で使う。</p></div></aside>
-<main><header><div><span class="eyebrow">CODEX / STANDARD CONFIGURATION</span><h1>自分の Codex を、組み立てる。</h1></div><span class="badge">DRAFT · 未適用</span></header><div class="toolbar"><label>構成名<input id="name" maxlength="100"></label><label>セットID<input id="setId" maxlength="64"></label><button id="save">ブラウザーに保存</button><button id="load-config">構成を読み込む ↑</button><input id="config-file" type="file" accept=".json" hidden></div><p id="status" role="status"></p>
-<div class="layout"><div class="editor">
-<section data-panel="basics"><p class="eyebrow">01 — FOUNDATION</p><h2>実行の土台を決める</h2><p class="description">Codex 標準形式の設定セットを作ります。空の項目はベース設定を引き継ぎます。</p><label>モデル ID<input id="model" placeholder="空欄で既存設定 / Codex の既定値"></label><div class="columns"><label>推論の深さ<select id="reasoning"><option value="">引き継ぐ</option>low</option><option>medium</option><option>high</option><option>xhigh</option></select></label><label>サンドボックス<select id="sandbox"><option value="workspace-write">workspace-write</option><option value="read-only">read-only</option></select></label></div><label>承認方針<select id="approval"><option value="on-request">必要なときに承認を求める</option><option value="untrusted">信頼しないコマンドは承認を求める</option></select></label><details><summary>既存の config.toml をベースにする</summary><p class="description">内容を確認してから貼り付けてください。未知の設定も保持し、出力します。</p><textarea id="baseConfig" spellcheck="false" placeholder="# 既存の設定を貼り付け"></textarea></details><p class="note">モデルと推論の組み合わせの可用性、管理者設定による制約は適用先で確認してください。</p></section>
-<section data-panel="instructions" hidden><p class="eyebrow">02 — INSTRUCTIONS</p><h2>振る舞いを言葉で決める</h2><p class="description">この環境で共通して使う指示を AGENTS.md として出力します。</p><label>エージェントへの指示<textarea id="instructions" class="large"></textarea></label><p class="note">既存の指示がある場合は統合してください。スキルの作成・コピー・インストールは行いません。</p></section>
-<section data-panel="rules" hidden><p class="eyebrow">03 — COMMAND RULES</p><h2>標準の許可ルール</h2><p class="description">コマンドの先頭の引数で allow / prompt / forbidden を指定します。</p><div id="rule-list"></div><button id="add-rule">＋ ルールを追加</button><p class="note">単純な連結は Codex が分割して判定します。広い shell・インタープリターの許可には注意してください。</p></section>
-<section data-panel="hooks" hidden><p class="eyebrow">04 — LIFECYCLE</p><h2>処理を差し込む</h2><p class="description">フックを部品として登録します。実行ポリシーのフックは次の画面で追加できます。</p><div id="hook-list"></div><button id="add-hook">＋ フックを追加</button><p class="note">コマンドはコンテナ内で実行されます。ホストにしかないファイルは使用できません。ここで実行・信頼登録は行いません。</p></section>
-<section data-panel="policy" hidden><p class="eyebrow">05 — EXECUTION POLICY</p><h2>許可の先を検査する</h2><label class="toggle"><input id="policyEnabled" type="checkbox">追加の実行ポリシーを組み込む</label><div id="policy-rules"></div><label>コマンドを試す<textarea id="command" spellcheck="false">echo ok; python3 -c "print(1)"</textarea></label><button id="simulate" class="primary">実行せずに判定する</button><div id="verdict" aria-live="polite"></div><p class="note">exec-policy の共通エンジンを使用します。任意のプログラム内部を網羅するものではありません。無効化すると追加フックの制限を外します。</p></section>
-<section data-panel="output" hidden><p class="eyebrow">06 — ASSEMBLED CONFIGURATION</p><h2>確認して、Codex へ渡す</h2><p class="description">構成 JSON は再編集用、ZIP は CODEX_HOME に配置する設定一式です。</p><div class="buttons"><button id="download-config">構成 JSON ↓</button><button id="download-zip" class="primary">設定一式 ZIP ↓</button></div><div id="warnings"></div><label>出力ファイル<select id="file-select"></select></label><pre id="file-preview"></pre><p class="note">ZIP の中身を CODEX_HOME の直下に配置します。未設定時は ~/.codex が既定です。既存ファイルとの差分を確認して反映してください。追加の実行ポリシーには Node.js と POSIX shell が必要です。自動適用は行いません。</p></section>
-</div><aside class="assembly"><p class="eyebrow">YOUR ASSEMBLY</p><h3 id="assembly-name"></h3><p id="target"></p><div class="flow"><span>基本設定</span><i>＋</i><span>指示・許可ルール</span><i>＋</i><span>フック・実行ポリシー</span><i>↓</i><strong>Codex の構成</strong></div><div class="stats" id="stats"></div><button id="review" class="primary">構成を確認する →</button><p class="small">接続点は Codex 標準の設定ファイルだけ。ホストの CLI、コンテナ、agent-runtime で同じセットを使えます。</p></aside></div><footer>CODEX CUSTOMIZER · Codex 標準形式で、小さな部品を組み合わせる。</footer></main><script type="module" src="app.js"></script></body></html>
+<!doctype html>
+<html lang="ja">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Codex Customizer · CODEX_HOMEの作業台</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<aside class="sidebar">
+ <a href="./" class="brand"><b>c/</b><span>CODEX<br>CUSTOMIZER</span></a>
+ <p class="nav-caption">CODEX_HOME WORKBENCH</p>
+ <nav><button data-page="build" class="selected">▦ <span>組み立てる</span></button><button data-page="output">↗ <span>確認・出力する</span></button></nav>
+ <div class="sidebar-bottom"><span class="dot"></span> LOCAL WORKSPACE<p>パーツから CODEX_HOME をつくる。<br>runtime はそれを参照する。</p></div>
+</aside>
+<main>
+ <header><div><span class="eyebrow">BUILD YOUR CODEX_HOME</span><h1>パーツを選んで、自分の Codex に。</h1></div><span class="badge">DRAFT · 未適用</span></header>
+ <div class="toolbar"><label>構成名<input id="name" maxlength="100"></label><label>セットID<input id="setId" maxlength="64"></label><button id="save">ブラウザーに保存</button><button id="load-config">構成を読み込む ↑</button><input id="config-file" type="file" accept=".json" hidden></div>
+ <p id="status" role="status"></p>
+ <section data-panel="build" class="workbench">
+  <div class="workbench-top"><div><p class="eyebrow">ONE WORKBENCH / EVERY PART</p><h2>部品を組み上げる</h2><p class="description">設定も、指示も、スキルも、サブエージェントも。置く場所で組み込み先を、置く位置で順序を決めます。編集はカードをダブルクリック。</p></div><button id="review" class="primary">CODEX_HOME を確認 →</button></div>
+  <div class="builder-board">
+   <aside class="parts-palette" data-drop-zone="library" aria-label="パーツライブラリの配置先">
+    <div class="palette-title"><div><p class="eyebrow">PARTS LIBRARY</p><h3>使えるパーツ</h3></div><button id="new-part">＋ パーツ</button></div>
+    <label class="search-label">パーツを探す<input id="part-search" type="search" placeholder="名前・種類で絞り込む"></label>
+    <div id="type-filters" class="type-filters" aria-label="パーツの種類"></div>
+    <div class="palette-tabs"><button id="tab-library" aria-pressed="true">自分のパーツ</button><button id="tab-examples" aria-pressed="false">すぐ使える例</button></div>
+    <div id="palette-items" class="palette-items"></div><div id="library-return" class="library-return">↩ ここへ戻して組み立てから外す<br><small>パーツはライブラリに残ります</small></div>
+    <button id="import-skill" class="import-button">スキルのフォルダーを取り込む ↑</button><input id="skill-folder" type="file" webkitdirectory multiple hidden>
+   </aside>
+   <div class="role-canvas">
+    <div class="scope-bar"><label>組み立て・出力する対象<select id="active-scope"></select></label><button id="add-role">＋ ロール</button></div>
+    <div id="scope-targets" class="scope-targets" aria-label="パーツの配置先"></div><div id="scope-info"></div>
+    <div class="stack-heading"><div><p class="eyebrow">ASSEMBLY STACK</p><h3 id="stack-title"></h3></div><span id="stack-count" class="count-badge"></span></div>
+    <p class="small">ライブラリからここへ、または上の共通・ロールへドラッグ。外すときはライブラリへ戻します。</p>
+    <div id="assembly-stack" class="drop-zone" data-drop-zone="stack" aria-label="パーツの組み立て先"></div>
+    <div class="assembly-footer"><span id="assembly-summary"></span><button id="example-role">開発ロールの例を追加</button></div>
+    <p id="builder-status" class="builder-status" role="status" aria-live="polite"></p>
+   </div>
+  </div>
+ </section>
+ <section data-panel="output" class="output-panel" hidden>
+  <p class="eyebrow">ASSEMBLED CODEX_HOME</p><h2>組み立てた結果を、runtime へ。</h2><p id="output-summary" class="description"></p>
+  <div class="buttons"><button id="download-config">パーツ・ロールの構成 JSON ↓</button><button id="download-zip" class="primary">CODEX_HOME 一式 ZIP ↓</button></div>
+  <div id="warnings"></div><label>出力ファイル<select id="file-select"></select></label><pre id="file-preview"></pre>
+  <details><summary>実行ポリシーを試す</summary><label>コマンド<textarea id="command" spellcheck="false">echo ok; python3 -c "print(1)"</textarea></label><button id="simulate">実行せずに判定</button><div id="verdict" aria-live="polite"></div></details>
+  <p class="note">ZIP を新しい CODEX_HOME に展開し、runtime の参照先として配置・マウントします。構成 JSON は再編集用です。既存環境への適用は自動では行いません。</p>
+ </section>
+ <footer>CODEX CUSTOMIZER · パーツ → CODEX_HOME → runtime</footer>
+</main>
+<dialog id="part-editor" aria-labelledby="editor-title"><div class="editor-top"><div><p id="editor-kind" class="eyebrow"></p><h2 id="editor-title">パーツを編集</h2></div><button id="close-editor" aria-label="編集画面を閉じる">✕</button></div><section id="editor-impact" class="editor-impact" aria-label="影響するロール"></section><div id="editor-content"></div><p id="editor-error" role="alert"></p><div class="editor-bottom"><button id="delete-part">ライブラリから削除</button><button id="cancel-editor">キャンセル</button><button id="save-part" class="primary">保存する</button></div></dialog>
+<dialog id="new-part-dialog" aria-labelledby="new-part-title"><div class="editor-top"><h2 id="new-part-title">どの部品をつくりますか？</h2><button id="close-new" aria-label="パーツ追加を閉じる">✕</button></div><p class="description">どの種類も、同じように組み込み・並び替え・編集できます。</p><div id="new-part-types" class="new-part-types"></div></dialog>
+<script type="module" src="app.js"></script>
+</body></html>
